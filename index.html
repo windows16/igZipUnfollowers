@@ -43,94 +43,262 @@ let unfollowers = [];
 
 function extractFollowers(data) {
   const set = new Set();
-  if (!Array.isArray(data)) return set;
-  data.forEach(item => (item.string_list_data || []).forEach(s => { if (s.value) set.add(s.value); }));
+
+  let list = [];
+
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (data.relationships_followers) {
+    list = data.relationships_followers;
+  }
+
+  list.forEach(item => {
+    (item.string_list_data || []).forEach(s => {
+      if (s.value) {
+        set.add(s.value.toLowerCase());
+      }
+    });
+  });
+
   return set;
 }
 
 function extractFollowing(data) {
   const set = new Set();
-  const list = Array.isArray(data) ? data : (data.relationships_following || []);
+
+  let list = [];
+
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (data.relationships_following) {
+    list = data.relationships_following;
+  }
+
   list.forEach(item => {
-    if (item.title) set.add(item.title);
-    (item.string_list_data || []).forEach(s => { if (s.value) set.add(s.value); });
+    if (item.title) {
+      set.add(item.title.toLowerCase());
+    }
+
+    (item.string_list_data || []).forEach(s => {
+      if (s.value) {
+        set.add(s.value.toLowerCase());
+      }
+    });
   });
+
   return set;
 }
 
-const colors = ['bg-pink-100 text-pink-800','bg-purple-100 text-purple-800','bg-blue-100 text-blue-800','bg-emerald-100 text-emerald-800','bg-amber-100 text-amber-800'];
+const colors = [
+  'bg-pink-100 text-pink-800',
+  'bg-purple-100 text-purple-800',
+  'bg-blue-100 text-blue-800',
+  'bg-emerald-100 text-emerald-800',
+  'bg-amber-100 text-amber-800'
+];
 
-function statCard(label, value, extra) {
-  return `<div class="rounded-xl bg-white border border-gray-100 p-4 text-center ${extra}">
-    <p class="text-xs text-gray-400 mb-1">${label}</p>
-    <p class="text-2xl font-medium">${value}</p>
-  </div>`;
+function statCard(label, value, extra = '') {
+  return `
+    <div class="rounded-xl bg-white border border-gray-100 p-4 text-center ${extra}">
+      <p class="text-xs text-gray-400 mb-1">${label}</p>
+      <p class="text-2xl font-medium">${value}</p>
+    </div>
+  `;
 }
 
-function userCard(u) {
-  const color = colors[u.charCodeAt(0) % colors.length];
-  return `<a href="https://instagram.com/${u}" target="_blank"
-    class="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-700 hover:border-pink-300 hover:bg-pink-50 transition-colors no-underline overflow-hidden"
-    title="@${u}">
-    <span class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${color}">${u[0].toUpperCase()}</span>
-    <span class="truncate text-xs">${u}</span>
-  </a>`;
+function userCard(username) {
+  const color =
+    colors[username.charCodeAt(0) % colors.length];
+
+  return `
+    <a href="https://instagram.com/${username}"
+       target="_blank"
+       rel="noopener noreferrer"
+       class="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-700 hover:border-pink-300 hover:bg-pink-50 transition-colors no-underline overflow-hidden"
+       title="@${username}">
+       
+      <span class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${color}">
+        ${username[0].toUpperCase()}
+      </span>
+
+      <span class="truncate text-xs">
+        ${username}
+      </span>
+    </a>
+  `;
 }
 
 function render(list) {
-  document.getElementById('list').innerHTML = list.map(userCard).join('');
-  document.getElementById('empty').classList.toggle('hidden', list.length > 0);
+  document.getElementById('list').innerHTML =
+    list.map(userCard).join('');
+
+  document
+    .getElementById('empty')
+    .classList.toggle('hidden', list.length > 0);
 }
 
-document.getElementById('search').addEventListener('input', e => {
-  const q = e.target.value.toLowerCase();
-  render(q ? unfollowers.filter(u => u.toLowerCase().includes(q)) : unfollowers);
-});
+document
+  .getElementById('search')
+  .addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
 
-document.getElementById('file-zip').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  document.getElementById('error').classList.add('hidden');
-  document.getElementById('lbl-text').textContent = file.name;
-
-  try {
-    const zip = await JSZip.loadAsync(file);
-    const followerFile = Object.keys(zip.files).find(k => k.endsWith('followers_1.json'));
-    const followingFile = Object.keys(zip.files).find(k => k.endsWith('following.json'));
-
-    if (!followerFile || !followingFile) {
-      const el = document.getElementById('error');
-      el.classList.remove('hidden');
-      el.textContent = 'No se encontraron followers_1.json y following.json. Asegúrate de subir el ZIP de Instagram.';
+    if (!q) {
+      render(unfollowers);
       return;
     }
 
-    const [fText, fgText] = await Promise.all([
-      zip.files[followerFile].async('string'),
-      zip.files[followingFile].async('string')
-    ]);
+    render(
+      unfollowers.filter(user =>
+        user.includes(q)
+      )
+    );
+  });
 
-    const followers = extractFollowers(JSON.parse(fText));
-    const following = extractFollowing(JSON.parse(fgText));
-    unfollowers = [...following].filter(u => !followers.has(u)).sort();
+document
+  .getElementById('file-zip')
+  .addEventListener('change', async e => {
 
-    const statsEl = document.getElementById('stats');
-    statsEl.classList.remove('hidden');
-    statsEl.innerHTML =
-      statCard('Sigues a', following.size, 'text-gray-700') +
-      statCard('Te siguen', followers.size, 'text-gray-700') +
-      statCard('No te siguen', unfollowers.length, 'text-red-500');
+    const file = e.target.files[0];
+    if (!file) return;
 
-    document.getElementById('results-wrap').classList.remove('hidden');
-    render(unfollowers);
+    document
+      .getElementById('error')
+      .classList.add('hidden');
 
-    document.getElementById('lbl-zip').classList.replace('border-gray-300', 'border-green-300');
-    document.getElementById('lbl-zip').classList.replace('bg-gray-50', 'bg-green-50');
-  } catch (err) {
-    const el = document.getElementById('error');
-    el.classList.remove('hidden');
-    el.textContent = 'Error al leer el archivo: ' + err.message;
-  }
-});
+    document
+      .getElementById('lbl-text')
+      .textContent = file.name;
+
+    try {
+
+      const zip = await JSZip.loadAsync(file);
+
+      const files = Object.keys(zip.files);
+
+      // Buscar followers
+      const followerFiles = files.filter(
+        file =>
+          file.includes('followers') &&
+          file.endsWith('.json')
+      );
+
+      // Buscar following
+      const followingFiles = files.filter(
+        file =>
+          file.includes('following') &&
+          file.endsWith('.json')
+      );
+
+      if (
+        followerFiles.length === 0 ||
+        followingFiles.length === 0
+      ) {
+        throw new Error(
+          'No se encontraron los archivos de seguidores y seguidos.'
+        );
+      }
+
+      const followers = new Set();
+      const following = new Set();
+
+      // Leer followers
+      for (const fileName of followerFiles) {
+
+        const text =
+          await zip.files[fileName].async('string');
+
+        const partial =
+          extractFollowers(JSON.parse(text));
+
+        partial.forEach(user =>
+          followers.add(user)
+        );
+      }
+
+      // Leer following
+      for (const fileName of followingFiles) {
+
+        const text =
+          await zip.files[fileName].async('string');
+
+        const partial =
+          extractFollowing(JSON.parse(text));
+
+        partial.forEach(user =>
+          following.add(user)
+        );
+      }
+
+      unfollowers = [...following]
+        .filter(user => !followers.has(user))
+        .sort();
+
+      console.log(
+        'Followers:',
+        followers.size
+      );
+
+      console.log(
+        'Following:',
+        following.size
+      );
+
+      console.log(
+        'No siguen:',
+        unfollowers.length
+      );
+
+      const statsEl =
+        document.getElementById('stats');
+
+      statsEl.classList.remove('hidden');
+
+      statsEl.innerHTML =
+        statCard(
+          'Sigues a',
+          following.size
+        ) +
+        statCard(
+          'Te siguen',
+          followers.size
+        ) +
+        statCard(
+          'No te siguen',
+          unfollowers.length,
+          'text-red-500'
+        );
+
+      document
+        .getElementById('results-wrap')
+        .classList.remove('hidden');
+
+      render(unfollowers);
+
+      const upload =
+        document.getElementById('lbl-zip');
+
+      upload.classList.remove(
+        'border-gray-300',
+        'bg-gray-50'
+      );
+
+      upload.classList.add(
+        'border-green-300',
+        'bg-green-50'
+      );
+
+    } catch (err) {
+
+      console.error(err);
+
+      const el =
+        document.getElementById('error');
+
+      el.classList.remove('hidden');
+
+      el.textContent =
+        'Error al leer el ZIP: ' +
+        err.message;
+    }
+  });
 </script>
